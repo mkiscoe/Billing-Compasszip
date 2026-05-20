@@ -58,6 +58,7 @@ function PayersAdmin() {
   const { user } = useAuth();
   const [rows, setRows] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   async function load() {
     const { data } = await supabase.from("payers").select("*").order("name");
@@ -93,18 +94,29 @@ function PayersAdmin() {
 
   if (editing) return <PayerForm value={editing} onCancel={() => setEditing(null)} onSave={save} />;
 
+  const displayedPayers = showArchived ? rows : rows.filter((r) => !r.archived);
+
   return (
     <Card className="p-4 mt-4">
-      <div className="flex justify-end gap-2 mb-3">
-        <PayerCsvUploadDialog onDone={load} />
-        <Button onClick={() => setEditing({ name: "", payer_type: "Commercial Insurance", prior_auth_required: false, pcs_required: false, uses_broker: false, wheelchair_claims: false, source_links: [], archived: false })}>
-          <Plus className="h-4 w-4 mr-1" /> New payer
-        </Button>
+      <div className="flex items-center justify-between mb-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+          <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+          Show archived
+          {showArchived && rows.some((r) => r.archived) && (
+            <Badge variant="outline" className="ml-1">{rows.filter((r) => r.archived).length} archived</Badge>
+          )}
+        </label>
+        <div className="flex gap-2">
+          <PayerCsvUploadDialog onDone={load} />
+          <Button onClick={() => setEditing({ name: "", payer_type: "Commercial Insurance", prior_auth_required: false, pcs_required: false, uses_broker: false, wheelchair_claims: false, source_links: [], archived: false })}>
+            <Plus className="h-4 w-4 mr-1" /> New payer
+          </Button>
+        </div>
       </div>
       <Table>
         <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Reviewed</TableHead><TableHead></TableHead><TableHead></TableHead></TableRow></TableHeader>
         <TableBody>
-          {rows.map((p) => (
+          {displayedPayers.map((p) => (
             <TableRow key={p.id} className={p.archived ? "opacity-50" : ""}>
               <TableCell className="font-medium">{p.name}</TableCell>
               <TableCell>{p.payer_type}</TableCell>
@@ -116,6 +128,9 @@ function PayersAdmin() {
               </TableCell>
             </TableRow>
           ))}
+          {displayedPayers.length === 0 && (
+            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">No payers found.</TableCell></TableRow>
+          )}
         </TableBody>
       </Table>
     </Card>
@@ -527,6 +542,7 @@ function TrainingAdmin() {
   const [editing, setEditing] = useState<any | null>(null);
   const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   async function load() {
     const { data } = await supabase.from("training_articles").select("*").order("category");
@@ -658,13 +674,26 @@ function TrainingAdmin() {
     </Card>
   );
 
+  const displayedArticles = showArchived ? rows : rows.filter((r) => !r.archived);
+
   return (
     <Card className="p-4 mt-4">
-      <div className="flex justify-end mb-3"><Button onClick={() => setEditing({ title: "", category: "Onboarding", body: "", attachments: [] })}><Plus className="h-4 w-4 mr-1" />New article</Button></div>
+      <div className="flex items-center justify-between mb-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+          <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+          Show archived
+          {showArchived && rows.some((r) => r.archived) && (
+            <Badge variant="outline" className="ml-1">{rows.filter((r) => r.archived).length} archived</Badge>
+          )}
+        </label>
+        <Button onClick={() => setEditing({ title: "", category: "Onboarding", body: "", attachments: [] })}>
+          <Plus className="h-4 w-4 mr-1" />New article
+        </Button>
+      </div>
       <Table>
         <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Category</TableHead><TableHead></TableHead></TableRow></TableHeader>
         <TableBody>
-          {rows.map((r) => (
+          {displayedArticles.map((r) => (
             <TableRow key={r.id} className={r.archived ? "opacity-50" : ""}>
               <TableCell className="font-medium">{r.title}</TableCell>
               <TableCell>{r.category}</TableCell>
@@ -674,6 +703,9 @@ function TrainingAdmin() {
               </TableCell>
             </TableRow>
           ))}
+          {displayedArticles.length === 0 && (
+            <TableRow><TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-6">No articles found.</TableCell></TableRow>
+          )}
         </TableBody>
       </Table>
     </Card>
@@ -685,6 +717,7 @@ function DenialsAdmin() {
   const [rows, setRows] = useState<any[]>([]);
   const [payers, setPayers] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   async function load() {
     const [r, p] = await Promise.all([
       supabase.from("denial_guides").select("*, payers(name)").order("denial_code"),
@@ -741,13 +774,26 @@ function DenialsAdmin() {
     </Card>
   );
 
+  const displayedDenials = showArchived ? rows : rows.filter((r) => !r.archived);
+
   return (
     <Card className="p-4 mt-4">
-      <div className="flex justify-end mb-3"><Button onClick={() => setEditing({ denial_code: "", denial_reason: "", how_to_fix: "", required_attachments: "", appeal_template: "", payer_id: null })}><Plus className="h-4 w-4 mr-1" />New guide</Button></div>
+      <div className="flex items-center justify-between mb-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+          <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+          Show archived
+          {showArchived && rows.some((r) => r.archived) && (
+            <Badge variant="outline" className="ml-1">{rows.filter((r) => r.archived).length} archived</Badge>
+          )}
+        </label>
+        <Button onClick={() => setEditing({ denial_code: "", denial_reason: "", how_to_fix: "", required_attachments: "", appeal_template: "", payer_id: null })}>
+          <Plus className="h-4 w-4 mr-1" />New guide
+        </Button>
+      </div>
       <Table>
         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Reason</TableHead><TableHead>Payer</TableHead><TableHead></TableHead></TableRow></TableHeader>
         <TableBody>
-          {rows.map((r) => (
+          {displayedDenials.map((r) => (
             <TableRow key={r.id} className={r.archived ? "opacity-50" : ""}>
               <TableCell className="font-medium">{r.denial_code}</TableCell>
               <TableCell>{r.denial_reason}</TableCell>
@@ -758,6 +804,9 @@ function DenialsAdmin() {
               </TableCell>
             </TableRow>
           ))}
+          {displayedDenials.length === 0 && (
+            <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">No denial guides found.</TableCell></TableRow>
+          )}
         </TableBody>
       </Table>
     </Card>
@@ -769,6 +818,7 @@ function InvoicingAdmin() {
   const [rows, setRows] = useState<CallType[]>([]);
   const [editing, setEditing] = useState<CallType | null>(null);
   const [open, setOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   async function load() {
     const { data } = await supabase.from("invoicing_call_types").select("*").order("name");
@@ -786,15 +836,24 @@ function InvoicingAdmin() {
   function startNew() { setEditing(blankCallType()); setOpen(true); }
   function startEdit(r: CallType) { setEditing({ ...r }); setOpen(true); }
 
+  const displayedCallTypes = showArchived ? rows : rows.filter((r) => !r.archived);
+
   return (
     <Card className="p-4 mt-4">
-      <div className="flex justify-end mb-3">
+      <div className="flex items-center justify-between mb-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+          <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+          Show archived
+          {showArchived && rows.some((r) => r.archived) && (
+            <Badge variant="outline" className="ml-1">{rows.filter((r) => r.archived).length} archived</Badge>
+          )}
+        </label>
         <Button onClick={startNew}><Plus className="h-4 w-4 mr-1" /> New call type</Button>
       </div>
       <Table>
         <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Natures</TableHead><TableHead>Updated</TableHead><TableHead></TableHead><TableHead></TableHead></TableRow></TableHeader>
         <TableBody>
-          {rows.map((r) => (
+          {displayedCallTypes.map((r) => (
             <TableRow key={r.id} className={r.archived ? "opacity-50" : ""}>
               <TableCell className="font-medium">{r.name}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{r.natures.join(", ")}</TableCell>
@@ -806,6 +865,9 @@ function InvoicingAdmin() {
               </TableCell>
             </TableRow>
           ))}
+          {displayedCallTypes.length === 0 && (
+            <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">No call types found.</TableCell></TableRow>
+          )}
         </TableBody>
       </Table>
       <InvoicingEditDialog open={open} onOpenChange={setOpen} callType={editing} onSaved={() => { setOpen(false); load(); }} />
