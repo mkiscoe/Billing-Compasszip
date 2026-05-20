@@ -13,9 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Archive, Plus, Pencil, RefreshCw } from "lucide-react";
+import { Archive, Plus, Pencil, RefreshCw, FileUp } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 import { InvoicingEditDialog, blankCallType, type CallType } from "./Invoicing";
+import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).href;
 
 export default function Admin() {
   const { isAdmin, isStaff, user, loading } = useAuth();
@@ -233,16 +235,36 @@ function TrainingLinkPicker({ value, onChange, label = "Link to a training artic
   );
 }
 
+async function extractPdfText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const parts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .replace(/ {2,}/g, " ")
+      .trim();
+    if (pageText) parts.push(pageText);
+  }
+  return parts.join("\n\n");
+}
+
 function TrainingAdmin() {
   const { user } = useAuth();
   const [rows, setRows] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [parsing, setParsing] = useState(false);
+
   async function load() {
     const { data } = await supabase.from("training_articles").select("*").order("category");
     setRows(data ?? []);
   }
   useEffect(() => { load(); }, []);
+
   async function save(r: any) {
     const isNew = !r.id;
     const payload = { title: r.title, category: r.category, body: r.body, archived: !!r.archived, attachments: r.attachments ?? [] };
@@ -253,11 +275,35 @@ function TrainingAdmin() {
     await logChange("training", data.id, data.title, isNew ? "Created article" : "Updated article", user?.email ?? undefined);
     toast.success("Saved"); setEditing(null); load();
   }
+
   async function archive(r: any) {
     await supabase.from("training_articles").update({ archived: !r.archived }).eq("id", r.id);
     await logChange("training", r.id, r.title, r.archived ? "Restored article" : "Archived article", user?.email ?? undefined);
     load();
   }
+
+  async function handlePdfImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setParsing(true);
+    try {
+      const text = await extractPdfText(file);
+      if (!text.trim()) return toast.error("Couldn't extract any text from this PDF.");
+      const inferredTitle = file.name.replace(/\.pdf$/i, "").replace(/[-_]/g, " ").trim();
+      setEditing((prev: any) => ({
+        ...prev,
+        title: prev.title?.trim() ? prev.title : inferredTitle,
+        body: text,
+      }));
+      toast.success("PDF content extracted — review and save when ready.");
+    } catch (err: any) {
+      toast.error("Failed to parse PDF: " + (err?.message ?? "unknown error"));
+    } finally {
+      setParsing(false);
+    }
+  }
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
@@ -273,25 +319,34 @@ function TrainingAdmin() {
         const { data: pub } = supabase.storage.from("training-materials").getPublicUrl(path);
         added.push({ name: file.name, path, url: pub.publicUrl, type: kind });
       }
-      setEditing({ ...editing, attachments: [...(editing.attachments ?? []), ...added] });
+      setEditing((prev: any) => ({ ...prev, attachments: [...(prev.attachments ?? []), ...added] }));
     } finally {
       setUploading(false);
       e.target.value = "";
     }
   }
+
   async function removeAttachment(idx: number) {
     const att = editing.attachments[idx];
     if (att?.path) await supabase.storage.from("training-materials").remove([att.path]);
     const next = editing.attachments.filter((_: any, i: number) => i !== idx);
-    setEditing({ ...editing, attachments: next });
+    setEditing((prev: any) => ({ ...prev, attachments: next }));
   }
 
   if (editing) return (
     <Card className="p-5 mt-4 space-y-4">
-      <h2 className="font-semibold">{editing.id ? "Edit article" : "New article"}</h2>
-      <Field label="Title"><Input value={editing.title ?? ""} onChange={(e) => setEditing({ ...editing, title: e.target.value })} /></Field>
-      <Field label="Category"><Input value={editing.category ?? ""} onChange={(e) => setEditing({ ...editing, category: e.target.value })} /></Field>
-      <Field label="Body"><Textarea rows={10} value={editing.body ?? ""} onChange={(e) => setEditing({ ...editing, body: e.target.value })} /></Field>
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">{editing.id ? "Edit article" : "New article"}</h2>
+        <label className={`inline-flex items-center gap-1.5 text-sm cursor-pointer px-3 py-1.5 rounded-md border border-dashed border-primary/50 text-primary hover:bg-primary/5 transition-colors ${parsing ? "opacity-60 pointer-events-none" : ""}`}>
+          <FileUp className="h-4 w-4" />
+          {parsing ? "Extracting…" : "Import from PDF"}
+          <input type="file" accept=".pdf" className="hidden" onChange={handlePdfImport} disabled={parsing} />
+        </label>
+      </div>
+      {parsing && <div className="text-xs text-muted-foreground animate-pulse">Reading PDF and extracting text…</div>}
+      <Field label="Title"><Input value={editing.title ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, title: e.target.value }))} /></Field>
+      <Field label="Category"><Input value={editing.category ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, category: e.target.value }))} /></Field>
+      <Field label="Body"><Textarea rows={10} value={editing.body ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, body: e.target.value }))} /></Field>
       <div className="space-y-2">
         <div className="text-sm font-medium">Attachments (PDFs &amp; videos)</div>
         <Input type="file" accept=".pdf,video/*" multiple disabled={uploading} onChange={handleUpload} />
