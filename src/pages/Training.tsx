@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Search } from "lucide-react";
+import { RichTextViewer } from "@/components/RichTextEditor";
 
 export default function Training() {
   const [rows, setRows] = useState<any[]>([]);
@@ -58,7 +59,7 @@ export default function Training() {
                 <AccordionItem key={a.id} value={a.id} id={`article-${a.id}`}>
                   <AccordionTrigger>{a.title}</AccordionTrigger>
                   <AccordionContent>
-                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">{a.body}</p>
+                    <RichTextViewer html={a.body} />
                     {Array.isArray(a.attachments) && a.attachments.length > 0 && (
                       <div className="mt-4 space-y-3">
                         {a.attachments.map((att: any, i: number) => (

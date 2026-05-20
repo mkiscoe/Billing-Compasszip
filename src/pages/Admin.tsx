@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Archive, Plus, Pencil, RefreshCw, FileUp } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 import { InvoicingEditDialog, blankCallType, type CallType } from "./Invoicing";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import * as pdfjsLib from "pdfjs-dist";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).href;
 
@@ -291,10 +292,15 @@ function TrainingAdmin() {
       const text = await extractPdfText(file);
       if (!text.trim()) return toast.error("Couldn't extract any text from this PDF.");
       const inferredTitle = file.name.replace(/\.pdf$/i, "").replace(/[-_]/g, " ").trim();
+      const html = text
+        .split(/\n\n+/)
+        .filter((p) => p.trim())
+        .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+        .join("");
       setEditing((prev: any) => ({
         ...prev,
         title: prev.title?.trim() ? prev.title : inferredTitle,
-        body: text,
+        body: html,
       }));
       toast.success("PDF content extracted — review and save when ready.");
     } catch (err: any) {
@@ -302,6 +308,17 @@ function TrainingAdmin() {
     } finally {
       setParsing(false);
     }
+  }
+
+  async function uploadImage(file: File): Promise<string> {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("training-materials")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) { toast.error(error.message); throw error; }
+    const { data } = supabase.storage.from("training-materials").getPublicUrl(path);
+    return data.publicUrl;
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -346,7 +363,14 @@ function TrainingAdmin() {
       {parsing && <div className="text-xs text-muted-foreground animate-pulse">Reading PDF and extracting text…</div>}
       <Field label="Title"><Input value={editing.title ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, title: e.target.value }))} /></Field>
       <Field label="Category"><Input value={editing.category ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, category: e.target.value }))} /></Field>
-      <Field label="Body"><Textarea rows={10} value={editing.body ?? ""} onChange={(e) => setEditing((prev: any) => ({ ...prev, body: e.target.value }))} /></Field>
+      <Field label="Body">
+        <RichTextEditor
+          value={editing.body ?? ""}
+          onChange={(html) => setEditing((prev: any) => ({ ...prev, body: html }))}
+          onImageUpload={uploadImage}
+          minHeight={320}
+        />
+      </Field>
       <div className="space-y-2">
         <div className="text-sm font-medium">Attachments (PDFs &amp; videos)</div>
         <Input type="file" accept=".pdf,video/*" multiple disabled={uploading} onChange={handleUpload} />
