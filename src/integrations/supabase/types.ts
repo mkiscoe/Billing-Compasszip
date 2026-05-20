@@ -434,24 +434,99 @@ export type Database = {
         }
         Relationships: []
       }
+      policies: {
+        Row: {
+          archived: boolean
+          body: string
+          created_at: string
+          id: string
+          published: boolean
+          published_at: string | null
+          title: string
+          training_article_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          archived?: boolean
+          body?: string
+          created_at?: string
+          id?: string
+          published?: boolean
+          published_at?: string | null
+          title: string
+          training_article_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          archived?: boolean
+          body?: string
+          created_at?: string
+          id?: string
+          published?: boolean
+          published_at?: string | null
+          title?: string
+          training_article_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      policy_acknowledgements: {
+        Row: {
+          created_at: string
+          id: string
+          policy_id: string
+          signed_at: string
+          signed_name: string
+          user_display_name: string | null
+          user_email: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          policy_id: string
+          signed_at: string
+          signed_name: string
+          user_display_name?: string | null
+          user_email?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          policy_id?: string
+          signed_at?: string
+          signed_name?: string
+          user_display_name?: string | null
+          user_email?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
           display_name: string | null
           email: string | null
+          first_login_at: string | null
           id: string
+          login_count: number
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          first_login_at?: string | null
           id: string
+          login_count?: number
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          first_login_at?: string | null
           id?: string
+          login_count?: number
         }
         Relationships: []
       }

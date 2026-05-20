@@ -17,6 +17,7 @@ import Suggestions from "./pages/Suggestions";
 import PayerRequests from "./pages/PayerRequests";
 import Invoicing from "./pages/Invoicing";
 import Claims from "./pages/Claims";
+import Policies from "./pages/Policies";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
               <Route path="/denials" element={<Denials />} />
               <Route path="/invoicing" element={<Invoicing />} />
               <Route path="/claims" element={<Claims />} />
+              <Route path="/policies" element={<Policies />} />
               <Route path="/change-log" element={<ChangeLog />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/suggestions" element={<Suggestions />} />

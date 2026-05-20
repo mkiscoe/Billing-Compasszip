@@ -14,7 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Archive, Plus, Pencil, RefreshCw, FileUp, Download } from "lucide-react";
+import { Archive, Plus, Pencil, RefreshCw, FileUp, Download, Users } from "lucide-react";
+import { format } from "date-fns";
 import { formatDate } from "@/lib/dates";
 import { InvoicingEditDialog, blankCallType, type CallType } from "./Invoicing";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -38,12 +39,14 @@ export default function Admin() {
           <TabsTrigger value="training">Training</TabsTrigger>
           <TabsTrigger value="denials">Denial guides</TabsTrigger>
           <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
+          <TabsTrigger value="policies">Policies</TabsTrigger>
           {isAdmin && <TabsTrigger value="users">Users &amp; roles</TabsTrigger>}
         </TabsList>
         <TabsContent value="payers"><PayersAdmin /></TabsContent>
         <TabsContent value="training"><TrainingAdmin /></TabsContent>
         <TabsContent value="denials"><DenialsAdmin /></TabsContent>
         <TabsContent value="invoicing"><InvoicingAdmin /></TabsContent>
+        <TabsContent value="policies"><PoliciesAdmin /></TabsContent>
         {isAdmin && <TabsContent value="users"><UsersAdmin /></TabsContent>}
       </Tabs>
     </div>
@@ -940,6 +943,245 @@ function UsersAdmin() {
           })}
         </TableBody>
       </Table>
+    </Card>
+  );
+}
+
+function PoliciesAdmin() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [ackModal, setAckModal] = useState<any | null>(null);
+  const [acks, setAcks] = useState<any[]>([]);
+  const [ackLoading, setAckLoading] = useState(false);
+
+  async function load() {
+    const { data } = await supabase.from("policies").select("*").order("created_at", { ascending: false });
+    setRows(data ?? []);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function save(p: any) {
+    const isNew = !p.id;
+    const existing = isNew ? null : rows.find((r: any) => r.id === p.id);
+    const wasPublished = existing?.published ?? false;
+    const nowPublished = !!p.published;
+    const payload: any = {
+      title: (p.title ?? "").trim(),
+      body: p.body ?? "",
+      training_article_id: p.training_article_id || null,
+      published: nowPublished,
+      published_at: nowPublished && !wasPublished ? new Date().toISOString() : (p.published_at ?? null),
+      archived: !!p.archived,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = isNew
+      ? await supabase.from("policies").insert(payload)
+      : await supabase.from("policies").update(payload).eq("id", p.id);
+    if (error) return toast.error(error.message);
+    toast.success(isNew ? "Policy created." : "Policy saved.");
+    setEditing(null);
+    load();
+  }
+
+  async function togglePublish(p: any) {
+    const nowPublished = !p.published;
+    const { error } = await supabase.from("policies").update({
+      published: nowPublished,
+      published_at: nowPublished && !p.published_at ? new Date().toISOString() : p.published_at,
+      updated_at: new Date().toISOString(),
+    }).eq("id", p.id);
+    if (error) return toast.error(error.message);
+    toast.success(nowPublished ? "Policy published — users will see it on their dashboard." : "Policy unpublished.");
+    load();
+  }
+
+  async function toggleArchive(p: any) {
+    await supabase.from("policies").update({ archived: !p.archived, updated_at: new Date().toISOString() }).eq("id", p.id);
+    load();
+  }
+
+  async function openAckLog(pol: any) {
+    setAckModal(pol);
+    setAcks([]);
+    setAckLoading(true);
+    const { data } = await supabase
+      .from("policy_acknowledgements")
+      .select("*")
+      .eq("policy_id", pol.id)
+      .order("signed_at", { ascending: false });
+    setAcks(data ?? []);
+    setAckLoading(false);
+  }
+
+  const displayed = showArchived ? rows : rows.filter((r: any) => !r.archived);
+  const archivedCount = rows.filter((r: any) => r.archived).length;
+
+  if (editing) {
+    return (
+      <Card className="p-5 mt-4 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-base">{editing.id ? "Edit policy" : "New policy"}</h2>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+        </div>
+        <Field label="Title">
+          <Input
+            value={editing.title ?? ""}
+            onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+            placeholder="Policy title"
+          />
+        </Field>
+        <Field label="Body">
+          <RichTextEditor
+            value={editing.body ?? ""}
+            onChange={(html) => setEditing({ ...editing, body: html })}
+            minHeight={280}
+          />
+        </Field>
+        <TrainingLinkPicker
+          label="Link to a training article (optional)"
+          value={editing.training_article_id}
+          onChange={(id) => setEditing({ ...editing, training_article_id: id })}
+        />
+        <Field label="Status">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <Switch
+              checked={!!editing.published}
+              onCheckedChange={(v) => setEditing({ ...editing, published: v })}
+            />
+            <span className="text-sm">
+              {editing.published
+                ? <span className="font-medium text-green-700">Published — visible to all users</span>
+                : <span className="text-muted-foreground">Draft — not visible to users</span>}
+            </span>
+          </label>
+        </Field>
+        <div className="flex gap-2 pt-2 border-t">
+          <Button onClick={() => save(editing)} disabled={!editing.title?.trim()}>Save policy</Button>
+          <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4 mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+          <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+          Show archived
+          {showArchived && archivedCount > 0 && (
+            <Badge variant="outline" className="ml-1">{archivedCount} archived</Badge>
+          )}
+        </label>
+        <Button onClick={() => setEditing({ title: "", body: "", published: false, archived: false })}>
+          <Plus className="h-4 w-4 mr-1" /> New policy
+        </Button>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Title</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Published</TableHead>
+            <TableHead>Ack log</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayed.map((p: any) => (
+            <TableRow key={p.id} className={p.archived ? "opacity-50" : ""}>
+              <TableCell className="font-medium max-w-xs truncate">{p.title}</TableCell>
+              <TableCell>
+                {p.published
+                  ? <Badge className="bg-green-100 text-green-800 border border-green-300">Published</Badge>
+                  : <Badge variant="outline">Draft</Badge>}
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {p.published_at ? format(new Date(p.published_at), "MMM d, yyyy") : "—"}
+              </TableCell>
+              <TableCell>
+                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => openAckLog(p)}>
+                  <Users className="h-3 w-3" /> View log
+                </Button>
+              </TableCell>
+              <TableCell className="text-right space-x-1">
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => togglePublish(p)}>
+                  {p.published ? "Unpublish" : "Publish"}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditing(p)}>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="sm" variant="ghost" className="h-7 w-7 p-0"
+                  title={p.archived ? "Restore" : "Archive"}
+                  onClick={() => toggleArchive(p)}
+                >
+                  {p.archived ? <RefreshCw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+          {displayed.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                {showArchived ? "No policies." : "No policies yet. Click \"New policy\" to get started."}
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+
+      <Dialog open={!!ackModal} onOpenChange={(o) => { if (!o) setAckModal(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Acknowledgement log</DialogTitle>
+            <DialogDescription className="font-medium truncate">{ackModal?.title}</DialogDescription>
+          </DialogHeader>
+          {ackLoading ? (
+            <p className="text-sm text-muted-foreground py-4">Loading…</p>
+          ) : acks.length === 0 ? (
+            <div className="py-6 text-center">
+              <p className="text-sm text-muted-foreground">No acknowledgements recorded yet.</p>
+              {ackModal?.published && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  This policy is published — users will see it on their next login.
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground -mt-1 mb-2">
+                {acks.length} user{acks.length !== 1 ? "s have" : " has"} acknowledged this policy.
+              </p>
+              <div className="overflow-y-auto flex-1">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name signed</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Signed at</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {acks.map((a: any) => (
+                      <TableRow key={a.id}>
+                        <TableCell className="font-medium">{a.signed_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{a.user_email ?? "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(a.signed_at), "MMM d, yyyy h:mm a")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

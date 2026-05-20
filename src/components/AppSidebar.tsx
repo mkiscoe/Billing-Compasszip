@@ -3,7 +3,7 @@ import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Building2, GraduationCap, AlertTriangle, History, Shield, Activity, LogOut, Inbox, Receipt, FileSearch, FilePlus } from "lucide-react";
+import { LayoutDashboard, Building2, GraduationCap, AlertTriangle, History, Shield, Activity, LogOut, Inbox, Receipt, FileSearch, FilePlus, ScrollText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +13,7 @@ const main = [
   { title: "Training", url: "/training", icon: GraduationCap },
   { title: "Denials & Appeals", url: "/denials", icon: AlertTriangle },
   { title: "Invoicing", url: "/invoicing", icon: Receipt },
+  { title: "Policies", url: "/policies", icon: ScrollText },
   { title: "Change Log", url: "/change-log", icon: History },
 ];
 
