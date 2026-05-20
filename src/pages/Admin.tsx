@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,8 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Archive, Plus, Pencil, RefreshCw, FileUp } from "lucide-react";
+import { Archive, Plus, Pencil, RefreshCw, FileUp, Download } from "lucide-react";
 import { formatDate } from "@/lib/dates";
 import { InvoicingEditDialog, blankCallType, type CallType } from "./Invoicing";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -94,7 +95,8 @@ function PayersAdmin() {
 
   return (
     <Card className="p-4 mt-4">
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end gap-2 mb-3">
+        <PayerCsvUploadDialog onDone={load} />
         <Button onClick={() => setEditing({ name: "", payer_type: "Commercial Insurance", prior_auth_required: false, pcs_required: false, uses_broker: false, wheelchair_claims: false, source_links: [], archived: false })}>
           <Plus className="h-4 w-4 mr-1" /> New payer
         </Button>
@@ -204,6 +206,272 @@ function PayerForm({ value, onSave, onCancel }: { value: any; onSave: (v: any) =
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+}
+
+const PAYER_TYPES = [
+  "Commercial Insurance", "Medicare", "Medicare Advantage", "Ohio Medicaid",
+  "Medicaid Advantage", "Out of State Medicaid", "Worker's Comp", "Auto/Liability", "Brokerage",
+];
+
+const CSV_COLUMNS = [
+  "name", "payer_type", "electronic_payer_id", "portal_url", "portal_notes",
+  "timely_filing_days", "appeal_limit_days", "pcs_required", "prior_auth_required",
+  "uses_broker", "wheelchair_claims", "claims_address", "appeals_address",
+  "documentation_requirements", "common_denial_reasons", "internal_notes",
+];
+
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === "," && !inQ) { result.push(cur); cur = ""; }
+    else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseBool(v: string): boolean {
+  return ["true", "yes", "1", "y"].includes((v ?? "").toLowerCase());
+}
+
+function validatePayerRow(row: any): string | null {
+  if (!row.name?.trim()) return "Name is required";
+  if (row.payer_type && !PAYER_TYPES.includes(row.payer_type.trim())) {
+    return `Unknown payer_type "${row.payer_type}" — must match one of the 9 valid types`;
+  }
+  return null;
+}
+
+function PayerCsvUploadDialog({ onDone }: { onDone: () => void }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [results, setResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function downloadTemplate() {
+    const example = [
+      "Acme Health Plan", "Commercial Insurance", "12345", "https://portal.example.com", "Login with NPI",
+      "90", "180", "false", "false", "false", "false", "", "", "", "", "",
+    ];
+    const csv = [CSV_COLUMNS.join(","), example.join(",")].join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "payer_import_template.csv";
+    a.click();
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = (ev.target?.result as string) ?? "";
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) { toast.error("CSV must have a header row and at least one data row."); return; }
+      const headers = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+      const parsed = lines.slice(1).map((line, idx) => {
+        const vals = parseCsvLine(line);
+        const obj: any = { _row: idx + 2 };
+        headers.forEach((h, i) => { obj[h] = (vals[i] ?? "").trim(); });
+        return obj;
+      });
+      setRows(parsed);
+      setResults(null);
+    };
+    reader.readAsText(file);
+  }
+
+  async function runImport() {
+    const valid = rows.filter((r) => !validatePayerRow(r));
+    if (!valid.length) return;
+    setImporting(true);
+    const errors: string[] = [];
+    let success = 0;
+    for (const row of valid) {
+      const payload = {
+        name: row.name.trim(),
+        payer_type: row.payer_type?.trim() || "Commercial Insurance",
+        electronic_payer_id: row.electronic_payer_id || null,
+        portal_url: row.portal_url || null,
+        portal_notes: row.portal_notes || null,
+        timely_filing_days: row.timely_filing_days ? Number(row.timely_filing_days) : null,
+        appeal_limit_days: row.appeal_limit_days ? Number(row.appeal_limit_days) : null,
+        pcs_required: parseBool(row.pcs_required),
+        prior_auth_required: parseBool(row.prior_auth_required),
+        uses_broker: parseBool(row.uses_broker),
+        wheelchair_claims: parseBool(row.wheelchair_claims),
+        claims_address: row.claims_address || null,
+        appeals_address: row.appeals_address || null,
+        documentation_requirements: row.documentation_requirements || null,
+        common_denial_reasons: row.common_denial_reasons || null,
+        internal_notes: row.internal_notes || null,
+        archived: false,
+        source_links: [],
+      };
+      const { data, error } = await supabase.from("payers").insert(payload).select("id").single();
+      if (error) {
+        errors.push(`Row ${row._row} (${row.name}): ${error.message}`);
+      } else {
+        success++;
+        await logChange("payer", data.id, row.name, "Imported via CSV", user?.email ?? undefined);
+      }
+    }
+    setResults({ success, errors });
+    setImporting(false);
+    if (success > 0) onDone();
+  }
+
+  const validCount = rows.filter((r) => !validatePayerRow(r)).length;
+  const invalidCount = rows.length - validCount;
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => { setOpen(true); setRows([]); setResults(null); }}>
+        <FileUp className="h-4 w-4 mr-1.5" /> Import CSV
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import payers from CSV</DialogTitle>
+            <DialogDescription>
+              Download the template, fill it in (Excel or Google Sheets), save as CSV, then upload.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            {/* Step 1 */}
+            <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Step 1 — Download the template</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Columns: {CSV_COLUMNS.join(", ")}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                <Download className="h-4 w-4 mr-1.5" /> Template
+              </Button>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Step 2 — Upload your completed CSV</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {rows.length > 0 ? `${rows.length} row${rows.length !== 1 ? "s" : ""} parsed` : "No file selected yet"}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+                <FileUp className="h-4 w-4 mr-1.5" /> Choose file
+              </Button>
+              <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+            </div>
+
+            {/* Preview */}
+            {rows.length > 0 && !results && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Preview — review before importing</p>
+                  <div className="flex gap-2 text-xs">
+                    <span className="text-green-600 font-medium">{validCount} valid</span>
+                    {invalidCount > 0 && <span className="text-destructive font-medium">{invalidCount} invalid</span>}
+                  </div>
+                </div>
+
+                <div className="border rounded-md overflow-auto max-h-64">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10 text-xs">#</TableHead>
+                        <TableHead className="text-xs">Name</TableHead>
+                        <TableHead className="text-xs">Type</TableHead>
+                        <TableHead className="text-xs">Payer ID</TableHead>
+                        <TableHead className="text-xs">Filing (days)</TableHead>
+                        <TableHead className="text-xs">Appeal (days)</TableHead>
+                        <TableHead className="w-12 text-xs text-center">OK?</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((row) => {
+                        const err = validatePayerRow(row);
+                        return (
+                          <TableRow key={row._row} className={err ? "bg-destructive/5" : ""}>
+                            <TableCell className="text-xs text-muted-foreground">{row._row}</TableCell>
+                            <TableCell className="text-sm font-medium">
+                              {row.name || <span className="text-destructive italic">missing</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">{row.payer_type || <span className="text-muted-foreground">—</span>}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{row.electronic_payer_id || "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{row.timely_filing_days || "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{row.appeal_limit_days || "—"}</TableCell>
+                            <TableCell className="text-center">
+                              {err
+                                ? <span className="text-destructive text-xs" title={err}>✕</span>
+                                : <span className="text-green-600 text-xs">✓</span>}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {invalidCount > 0 && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+                    <p className="text-xs font-medium text-destructive">Issues to fix before importing:</p>
+                    {rows.filter((r) => validatePayerRow(r)).map((r) => (
+                      <p key={r._row} className="text-xs text-muted-foreground">Row {r._row}: {validatePayerRow(r)}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={runImport} disabled={importing || validCount === 0}>
+                    {importing ? "Importing…" : `Import ${validCount} payer${validCount !== 1 ? "s" : ""}`}
+                  </Button>
+                  {invalidCount > 0 && (
+                    <p className="text-xs text-muted-foreground">{invalidCount} invalid row{invalidCount !== 1 ? "s" : ""} will be skipped.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Results */}
+            {results && (
+              <div className="rounded-md border bg-muted/30 p-4 space-y-3">
+                <p className="font-medium text-sm">
+                  {results.success > 0
+                    ? `✓ ${results.success} payer${results.success !== 1 ? "s" : ""} imported successfully.`
+                    : "No payers were imported."}
+                </p>
+                {results.errors.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-destructive">{results.errors.length} error{results.errors.length !== 1 ? "s" : ""}:</p>
+                    {results.errors.map((e, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">{e}</p>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setRows([]); setResults(null); }}>
+                    Import more
+                  </Button>
+                  <Button size="sm" onClick={() => setOpen(false)}>Done</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 function TrainingLinkPicker({ value, onChange, label = "Link to a training article" }: { value: string | null | undefined; onChange: (id: string | null) => void; label?: string }) {

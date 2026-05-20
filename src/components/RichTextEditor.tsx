@@ -7,6 +7,9 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { Image as TiptapImage } from "@tiptap/extension-image";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Underline } from "@tiptap/extension-underline";
+
+// StarterKit ships without underline — we add it explicitly.
+// To avoid the "duplicate extension" warning we exclude it from StarterKit.
 import { cn } from "@/lib/utils";
 import {
   Bold, Italic, Underline as UnderlineIcon,
