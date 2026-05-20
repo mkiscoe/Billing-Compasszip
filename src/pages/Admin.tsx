@@ -95,7 +95,7 @@ function PayersAdmin() {
   return (
     <Card className="p-4 mt-4">
       <div className="flex justify-end mb-3">
-        <Button onClick={() => setEditing({ name: "", payer_type: "Commercial PPO", prior_auth_required: false, pcs_required: false, uses_broker: false, wheelchair_claims: false, source_links: [], archived: false })}>
+        <Button onClick={() => setEditing({ name: "", payer_type: "Commercial Insurance", prior_auth_required: false, pcs_required: false, uses_broker: false, wheelchair_claims: false, source_links: [], archived: false })}>
           <Plus className="h-4 w-4 mr-1" /> New payer
         </Button>
       </div>
@@ -133,7 +133,7 @@ function PayerForm({ value, onSave, onCancel }: { value: any; onSave: (v: any) =
           <Select value={v.payer_type} onValueChange={(x) => set("payer_type", x)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {["Commercial HMO","Commercial PPO","Medicare","Medicare Advantage","State Medicaid","Workers Comp","Auto/PIP","Self-Pay","Other"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+              {["Commercial Insurance","Medicare","Medicare Advantage","Ohio Medicaid","Medicaid Advantage","Out of State Medicaid","Worker's Comp","Auto/Liability","Brokerage"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
             </SelectContent>
           </Select>
         </Field>
