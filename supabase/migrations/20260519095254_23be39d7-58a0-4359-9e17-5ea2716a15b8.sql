@@ -1,0 +1,1 @@
+ALTER TABLE public.invoicing_call_types ADD COLUMN payer_specific_rules text NOT NULL DEFAULT '';
