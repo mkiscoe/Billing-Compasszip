@@ -955,6 +955,7 @@ function PoliciesAdmin() {
   const [ackModal, setAckModal] = useState<any | null>(null);
   const [acks, setAcks] = useState<any[]>([]);
   const [ackLoading, setAckLoading] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
 
   async function load() {
     const { data } = await supabase.from("policies").select("*").order("created_at", { ascending: false });
@@ -962,6 +963,16 @@ function PoliciesAdmin() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function uploadPdf(file: File): Promise<string | null> {
+    const path = `${crypto.randomUUID()}.pdf`;
+    const { error } = await supabase.storage
+      .from("policy-pdfs")
+      .upload(path, file, { contentType: "application/pdf", upsert: false });
+    if (error) { toast.error("Upload failed: " + error.message); return null; }
+    const { data } = supabase.storage.from("policy-pdfs").getPublicUrl(path);
+    return data.publicUrl;
+  }
 
   async function save(p: any) {
     const isNew = !p.id;
@@ -971,6 +982,7 @@ function PoliciesAdmin() {
     const payload: any = {
       title: (p.title ?? "").trim(),
       body: p.body ?? "",
+      pdf_url: p.pdf_url ?? null,
       training_article_id: p.training_article_id || null,
       published: nowPublished,
       published_at: nowPublished && !wasPublished ? new Date().toISOString() : (p.published_at ?? null),
@@ -1033,13 +1045,59 @@ function PoliciesAdmin() {
             placeholder="Policy title"
           />
         </Field>
-        <Field label="Body">
-          <RichTextEditor
+
+        <Field label="PDF Document">
+          {editing.pdf_url ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                <FileUp className="h-4 w-4 text-primary shrink-0" />
+                <span className="text-sm flex-1 truncate text-muted-foreground">PDF uploaded</span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+                  onClick={() => setEditing({ ...editing, pdf_url: null })}
+                >
+                  Remove
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">To replace, remove the current PDF then upload a new one.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Input
+                type="file"
+                accept="application/pdf"
+                disabled={pdfUploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setPdfUploading(true);
+                  const url = await uploadPdf(file);
+                  setPdfUploading(false);
+                  if (url) setEditing({ ...editing, pdf_url: url });
+                  e.target.value = "";
+                }}
+              />
+              {pdfUploading && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  Uploading…
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">PDF will be shown inline — all pages visible by scrolling.</p>
+            </div>
+          )}
+        </Field>
+
+        <Field label="Notes (shown below PDF)">
+          <Textarea
             value={editing.body ?? ""}
-            onChange={(html) => setEditing({ ...editing, body: html })}
-            minHeight={280}
+            onChange={(e) => setEditing({ ...editing, body: e.target.value })}
+            placeholder="Optional notes, reminders, or context shown below the PDF…"
+            rows={4}
           />
         </Field>
+
         <TrainingLinkPicker
           label="Link to a training article (optional)"
           value={editing.training_article_id}
@@ -1076,7 +1134,7 @@ function PoliciesAdmin() {
             <Badge variant="outline" className="ml-1">{archivedCount} archived</Badge>
           )}
         </label>
-        <Button onClick={() => setEditing({ title: "", body: "", published: false, archived: false })}>
+        <Button onClick={() => setEditing({ title: "", body: "", pdf_url: null, published: false, archived: false })}>
           <Plus className="h-4 w-4 mr-1" /> New policy
         </Button>
       </div>

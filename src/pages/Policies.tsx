@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { RichTextViewer } from "@/components/RichTextEditor";
+import { PdfViewer } from "@/components/PdfViewer";
 import { CheckCircle2, FileText, AlertCircle, ExternalLink, ScrollText } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -91,7 +91,6 @@ export default function Policies() {
         </div>
       )}
 
-      {/* Pending policies */}
       {pending.map((pol) => (
         <Card key={pol.id} className="p-6 border-warning/40 space-y-5">
           <div className="flex items-start gap-3">
@@ -107,9 +106,27 @@ export default function Policies() {
             </div>
           </div>
 
-          <div className="border rounded-md p-4 bg-muted/20 max-h-[420px] overflow-y-auto">
-            <RichTextViewer html={pol.body} />
-          </div>
+          {/* PDF viewer — all pages rendered inline */}
+          {pol.pdf_url ? (
+            <div className="rounded-md border bg-muted/10 p-3">
+              <PdfViewer url={pol.pdf_url} />
+            </div>
+          ) : (
+            <div className="border rounded-md p-4 bg-muted/20 max-h-[520px] overflow-y-auto">
+              <div
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: pol.body ?? "" }}
+              />
+            </div>
+          )}
+
+          {/* Notes section — shown below PDF when present */}
+          {pol.pdf_url && pol.body?.trim() && (
+            <div className="rounded-md border bg-muted/20 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Notes</p>
+              <p className="text-sm whitespace-pre-wrap text-foreground/80">{pol.body}</p>
+            </div>
+          )}
 
           {pol.training_articles && (
             <Link
@@ -125,7 +142,7 @@ export default function Policies() {
           <div className="border-t pt-5 space-y-3">
             <p className="text-sm font-semibold">Sign to acknowledge</p>
             <p className="text-xs text-muted-foreground">
-              By completing this form you confirm you have read and understood this policy.
+              By completing this form you confirm you have read and understood this policy in full.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
