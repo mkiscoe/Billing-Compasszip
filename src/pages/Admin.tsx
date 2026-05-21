@@ -153,7 +153,7 @@ function PayerForm({ value, onSave, onCancel }: { value: any; onSave: (v: any) =
           <Select value={v.payer_type} onValueChange={(x) => set("payer_type", x)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {["Commercial Insurance","Medicare","Medicare Advantage","Ohio Medicaid","Medicaid Advantage","Out of State Medicaid","Worker's Comp","Auto/Liability","Brokerage"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+              {["Commercial Insurance","Medicare","Medicare Advantage","Ohio Medicaid","Medicaid Advantage","Out of State Medicaid","Worker's Comp","Auto/Liability","Brokerage","VA/Military","Broker","Prison/Corrections","Supplemental"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
             </SelectContent>
           </Select>
         </Field>
@@ -229,6 +229,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const PAYER_TYPES = [
   "Commercial Insurance", "Medicare", "Medicare Advantage", "Ohio Medicaid",
   "Medicaid Advantage", "Out of State Medicaid", "Worker's Comp", "Auto/Liability", "Brokerage",
+  "VA/Military", "Broker", "Prison/Corrections", "Supplemental",
 ];
 
 const CSV_COLUMNS = [
